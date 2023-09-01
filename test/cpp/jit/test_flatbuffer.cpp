@@ -24,6 +24,8 @@
 #include <torch/custom_class.h>
 #include <torch/torch.h>
 
+#include <security/lionhead/utils/lib_ftest/ftest.h>
+
 #include <caffe2/serialize/versions.h>
 #include <torch/csrc/jit/serialization/import_export_functions.h>
 #include <unordered_set>
@@ -69,6 +71,8 @@ TEST(FlatbufferTest, LoadMalformedModule) {
       parse_mobile_module(bad_data.str().data(), bad_data.str().size()),
       "Malformed Flatbuffer module");
 }
+
+
 
 TEST(FlatbufferTest, UpsampleNearest2d) {
   Module m("m");
@@ -1837,6 +1841,60 @@ TEST(FlatbufferUpgraderTest, DivScalarInplaceIntV2) {
 
 } // namespace jit
 } // namespace torch
+
+FUZZ(FlatbufferFuzz, FuzzTorchJitLoad) {
+  auto fuzzedData = f.bytes("fuzzedData");
+  if (fuzzedData.empty()) {
+    return;
+  }
+  try {
+    std::stringstream fuzzedDataStream;
+    fuzzedDataStream << fuzzedData;
+
+    torch::jit::load(fuzzedDataStream);
+  } catch (...) {
+    return;
+  }
+}
+
+FUZZ(FlatbufferFuzz, FuzzTorchParseMobileLoadNoTensorCopy) {
+  auto fuzzedData = f.bytes("fuzzedData");
+  if (fuzzedData.empty()) {
+    return;
+  }
+  try {
+    auto result = torch::jit::parse_and_initialize_mobile_module(
+      reinterpret_cast<char*>(fuzzedData.data()),
+      fuzzedData.size(),
+      /*device=*/c10::nullopt,
+      /*extra_files=*/nullptr,
+      false);
+    (void) result;
+  }
+  catch (...) {
+    return;
+  }
+}
+
+FUZZ(FlatbufferFuzz, FuzzTorchParseMobileLoadTensorCopy) {
+  auto fuzzedData = f.bytes("fuzzedData");
+  if (fuzzedData.empty()) {
+    return;
+  }
+  try {
+    auto result = torch::jit::parse_and_initialize_mobile_module(
+      reinterpret_cast<char*>(fuzzedData.data()),
+      fuzzedData.size(),
+      /*device=*/c10::nullopt,
+      /*extra_files=*/nullptr,
+      true);
+    (void) result;
+  }
+  catch (...) {
+    return;
+  }
+}
+
 namespace torch {
 namespace jit {
 
